@@ -1,0 +1,166 @@
+﻿@*Flights page where you can search for flights and select one to reserve. It will redirect 
+    you to the reservations page to confirm your reservation.
+*@
+
+@page "/Flights"
+@using Traveless.Data
+@inject NavigationManager Navigation
+
+@*HTML for page layout*@
+<div class="row">
+    <div class="column">
+        <div>
+            <!-- In select bind all values for findFlight method -->
+            <!-- Displays drop down menyus with unique attributes from list of AllFlights -->
+            <div>
+                <h3>Flight Finder</h3>
+            </div>
+            <div>
+                <p>From:</p>
+                <div class="resize">
+                    <select @bind="departCode">
+                    <option value="">Any</option>
+                        @foreach (var depart in uniqueDepartureCodes)
+                        {
+                            <option value="@depart">@depart</option>
+               
+                        }
+                    </select>
+                </div> 
+            </div>
+            <div>
+                <p>To:</p>
+                <div class="resize">
+                    <select @bind="arrCode">
+                    <option value="">Any</option>
+                        @foreach (var arrive in uniqueArrivalCodes)
+                        {
+                            <option value="@arrive">@arrive</option>
+                        }
+                    </select>
+                </div>
+                
+            </div>
+            <!-- For the Day dropdown just displays a list of weekdays from the enum Weekdays -->
+            <div>
+                <p>Day:</p>
+                <div>
+                    <select @bind="day">
+                    <option value="">Any</option>
+                        @foreach (Weekday weekday in Enum.GetValues(typeof(Weekday)))
+                        {
+                            <option value="@weekday.ToString()">@weekday</option>
+
+                        }
+                    </select>
+                </div>
+                
+            </div>
+            <div>
+                <button type="submit" @onclick="FindFlights">Find Flights</button>
+            </div>
+            
+            <br/>
+        </div>
+        <br/>
+        <h3>Flights:</h3>
+        <br/>
+        <!-- When the page runs findFlghts and it finds flightResults it will display them. -->
+        @if (flightResults != null)
+        {
+            foreach (var flight in flightResults)
+            {
+                <div class="flight-border">
+                    <div class="flight-header">
+                        <h4>Flight Code: @flight.FlightId</h4>
+                        <button class="reserve" @onclick="() => reservationNav(flight)">Reserve</button>
+                    </div>
+                    <p>Airline: @flight.Airline</p>
+                    <p>Depart From: @flight.DepartureCode</p>
+                    <p>Arrive To: @flight.ArrivalCode</p>
+                    <p>Day: @flight.Day</p>
+                    <p>Depart Time: @flight.DepartTime</p>
+                    <p>Seats Remaining: @flight.Seats</p>
+                    <p>Cost Per Seat: @flight.CostPerSeat</p>
+                </div>
+            }
+        }
+        else
+        {
+            <div>
+                <h4>There are no flights to display right now.</h4>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    //Set empty values
+    private string departCode = "";
+    private string arrCode = "";
+    private string day = "";
+    private List<Flight> flightResults;
+    private List<string> uniqueDepartureCodes;
+    private List<string> uniqueArrivalCodes;
+    public enum Weekday
+    {
+        Sunday,
+        Monday,
+        Tuesday,
+        Wednesday,
+        Thursday,
+        Friday,
+        Saturday
+    }
+
+    protected override void OnInitialized()
+    {
+        uniqueDepartureCodes = new List<string>();
+        uniqueArrivalCodes = new List<string>();
+
+        //Looks through every flight and finds all unique departure and arrival codes and adds them to a list to display.
+        foreach (var flight in App.AllFlights)
+        {
+            if (!uniqueDepartureCodes.Contains(flight.DepartureCode))
+            {
+                uniqueDepartureCodes.Add(flight.DepartureCode);
+            }
+            if (!uniqueArrivalCodes.Contains(flight.ArrivalCode))
+            {
+                uniqueArrivalCodes.Add(flight.ArrivalCode);
+            }
+        }
+        base.OnInitialized();
+    }
+
+    //Method to search for Flight object by departure, arrival, or day of flight.
+    private void FindFlights()
+    {
+        flightResults = new List<Flight>();
+
+        //Searches all flights for matching user inputs and allows null values as well
+        foreach (var flight in App.AllFlights)
+        {
+            bool isMatchingDepartCode = string.IsNullOrEmpty(departCode) || (departCode == flight.DepartureCode);
+            bool isMatchingArrCode = string.IsNullOrEmpty(arrCode) || (arrCode == flight.ArrivalCode);
+            bool isMatchingDay = string.IsNullOrEmpty(day) || (day == flight.Day);
+
+            if (isMatchingDepartCode && isMatchingArrCode && isMatchingDay)
+            {
+                flightResults.Add(flight);
+            }
+
+            StateHasChanged();
+        }
+    }
+
+    //Probably put in reservationManagerClass?
+    private void reservationNav(Flight flight)
+    {
+        Reservation reservation = new Reservation();
+        var reservationCode = reservation.ReservationCode;
+
+        App.IsNewReservation = true;
+        Navigation.NavigateTo($"Reservations/{flight.FlightId}/{reservationCode}");
+    }
+}

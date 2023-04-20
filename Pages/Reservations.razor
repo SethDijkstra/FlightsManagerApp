@@ -1,0 +1,357 @@
+﻿@page "/Reservations"
+@page "/Reservations/{FlightId}"
+@page "/Reservations/{FlightId}/{ReservationCode}"
+@page "/Reservations/{FlightId}/{reservationCode}/true"
+
+@using Traveless.Data
+@using System.Threading
+@using System.Timers
+@inject NavigationManager NavigationManager
+
+
+<div class="column">
+    <div class="center">
+        <h3>All Reservations</h3>
+    </div>
+    <div class="reservation-codes">
+        @foreach (var reservation in App.AllReservations)
+        {
+            //Checks if reservation is active and if it is display blue, if set to inactive it will be red.
+            <button class="reservation-code @(reservation.IsActive?string.Empty : "red-button")" @onclick="() => LoadReservation(reservation)">@reservation.ReservationCode</button>
+        }
+    </div>
+</div>
+
+<div class="container">
+
+    <div class="left-column">
+
+        <div class="center">
+
+            @if (App.IsNewReservation)
+            {
+                <h3>New Reservation</h3>
+            }
+            else
+            {
+                <h3>View/Edit Reservation</h3>
+            }
+        </div>
+
+        <div class="input-box">
+            <!-- Title -->
+            <p>Reservation Code:</p>
+            <!-- Input Box -->
+            <input type="text" placeholder="" value="@ReservationCode" readonly/>
+        </div>
+        <div class="input-box">
+            <p>Flight Code:</p>
+            <input type="text" placeholder="" value="@selectedFlight?.FlightId" readonly/>
+        </div>
+        <div class="input-box">
+            <p>Airline:</p>
+            <input type="text" placeholder="" value="@selectedFlight?.Airline" readonly/>
+        </div>
+        <div class="input-box">
+            <p>Day:</p>
+            <input type="text" placeholder="" value="@selectedFlight?.Day" readonly/>
+        </div>
+        <div class="input-box">
+            <p>Time:</p>
+            <input type="text" placeholder="" value="@selectedFlight?.DepartTime" readonly/>
+        </div>
+        <div class="input-box">
+            <p>Cost:</p>
+            <input type="text" placeholder="" value="@selectedFlight?.CostPerSeat" readonly/>
+        </div>
+        <div class="input-box">
+            <p>Full Name:</p>
+            <input type="text" @bind="inputName" placeholder="" />
+        </div>
+        <div class="input-box">
+            <p>Citizenship:</p>
+            <input type="text" @bind="inputCitizenship" placeholder="" class="form-element"/>
+        </div>
+        <div class="dropdown">
+            <p>Status:</p>
+            <select class="status-select form-element" @bind="ReservationStatus">
+                <option value="Active">Active</option>
+                <option value="Inactive">Inactive</option>
+            </select>
+        </div>
+        
+        <div class="center">
+            @*Confirmation option before the app deletes the reservation from the binary file.*@
+            @if (ShowConfirmationDialog)
+            {
+                <div class="confirmation-dialog">
+                    <h4>Are you sure you want to delete the reservation?</h4>
+                    <button type="button" class="red-button" @onclick="CancelReservation">Yes</button>
+                    <button type="button" @onclick="() => ShowConfirmationDialog = false">No</button>
+                </div>
+            }
+            else
+            {
+                <button type="button" @onclick="SaveReservation">@saveButton</button>
+                <button type="button" class="red-button" @onclick="ConfirmCancel">@deleteButton</button>
+            }
+        </div>
+    </div>
+
+    @*Code to search reservations by any/all attributes.*@
+    <div class="right-column">
+        <div class="find-reservation">
+            <h3>Find Reservation</h3>
+            <div class="input-box">
+                <p>Reservation Code:</p>
+                <input type="text" @bind="searchReservationCode" placeholder="" />
+            </div>
+            <div class="input-box">
+                <p>Airline:</p>
+                <input type="text" @bind="searchAirline" placeholder="" />
+            </div>
+            <div class="input-box">
+                <p>Traveler's Full Name:</p>
+                <input type="text" @bind="searchName" placeholder="" />
+            </div>
+            <div class="center">
+                <button type="button" class="search-button" @onclick="() => foundReservations = FindReservations(searchReservationCode, searchAirline, searchName)">Search</button>
+            </div>
+            <p>@searchResultMessage</p>
+        </div>
+        <div class="found-reservations">
+            <ul>
+                @foreach (var reservation in foundReservations)
+                {
+                    <li>@reservation.ReservationCode</li>
+                }
+            </ul>
+        </div>
+    </div>
+</div>
+
+
+
+
+
+@code {
+    [Parameter] public string FlightId { private get; set; }
+    [Parameter] public string ReservationCode { private get; set; }
+
+    //Set variables
+    public bool IsNewReservation { get; set; }
+    private bool ShowConfirmationDialog { get; set; } = false;
+    private bool isProcessing = false;
+    private List<Reservation> foundReservations = new List<Reservation>();
+    private Reservation currentReservation;
+    private Reservation NewReservation { get; set; }
+    private Flight selectedFlight;
+    private string inputName;
+    private string inputCitizenship;
+    public string title = "New Reservation";
+    private string saveButton = "Save";
+    public string deleteButton = "Delete";
+    private string searchReservationCode;
+    private string searchAirline;
+    private string searchName;
+    private string searchResultMessage;
+    private string ReservationStatus;
+
+    //Initialize Reservation
+    protected override void OnInitialized()
+    {
+        if (!string.IsNullOrEmpty(FlightId))
+        {
+            foreach (var flight in App.AllFlights)
+            {
+                if (flight.FlightId == FlightId)
+                {
+                    selectedFlight = flight;
+                    break;
+                }
+            }
+        }
+
+        if (!string.IsNullOrEmpty(ReservationCode))
+        {
+            NewReservation = new Reservation { ReservationCode = ReservationCode };
+        }
+
+        currentReservation = new Reservation { IsActive = true };
+        ReservationStatus = "Active";
+
+        base.OnInitialized();
+    }
+
+    //Method to refresh page with selected reservation
+    private void LoadReservation(Reservation selectedReservation)
+    {
+        if (selectedReservation != null)
+        {
+            currentReservation = selectedReservation;
+            ReservationCode = selectedReservation.ReservationCode;
+            selectedFlight = selectedReservation.SelectedFlight;
+            inputName = selectedReservation.Name;
+            inputCitizenship = selectedReservation.Citizenship;
+            ReservationStatus = currentReservation.IsActive ? "Active" : "Inactive";
+            StateHasChanged();
+        }
+
+    }
+
+    //Find reservation method that accepts one or more inputs and searches All Reservations
+    private List<Reservation> FindReservations(string searchReservationCode, string searchAirline, string searchName)
+    {
+        List<Reservation> foundReservations = new List<Reservation>();
+        searchResultMessage = string.Empty;
+
+        // Check if at least one input is not null or empty
+        if (string.IsNullOrEmpty(searchReservationCode) && string.IsNullOrEmpty(searchAirline) && string.IsNullOrEmpty(searchName))
+        {
+            searchResultMessage = "Please enter at least one search criteria.";
+            StateHasChanged();
+            return foundReservations;
+        }
+
+        foreach (var reservation in App.AllReservations)
+        {
+            if ((!string.IsNullOrEmpty(searchReservationCode) && reservation.ReservationCode == searchReservationCode) ||
+                (!string.IsNullOrEmpty(searchAirline) && reservation.Airline == searchAirline) ||
+                (!string.IsNullOrEmpty(searchName) && reservation.Name == searchName))
+            {
+                foundReservations.Add(reservation);
+            }
+        }
+
+        if (foundReservations.Count == 0)
+        {
+            searchResultMessage = "No matching reservations found.";
+        }
+        else
+        {
+            searchResultMessage = $"Found {foundReservations.Count} matching reservation(s):";
+        }
+
+        StateHasChanged();
+        return foundReservations;
+    }
+
+
+    private async void CancelReservation()
+    {
+        //Checks if ConfirmCancel is running and if it is it'll wait.
+        if (!isProcessing)
+        {
+            isProcessing = true;
+            ShowConfirmationDialog = false;
+
+            //Removes reservation from list of all reservations
+            App.AllReservations.Remove(currentReservation);
+            isProcessing = false;
+        }
+
+        //Save list of reservations to binary file.
+        string appPath = System.IO.Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location);
+        string resourcePath = System.IO.Path.Combine(appPath, "..", "..", "..", "..", "..", "Resources", "Files", "reservations.bin");
+        Reservation.Persist(resourcePath);
+
+        //Reset text fields
+        inputName = string.Empty;
+        inputCitizenship = string.Empty;
+        ReservationCode = string.Empty;
+        selectedFlight = null;
+
+        StateHasChanged();
+    }
+
+    private void ConfirmCancel()
+    {
+        if (!isProcessing)
+        {
+            isProcessing = true;
+            ShowConfirmationDialog = true;
+            isProcessing = false;
+        }
+    }
+
+    //Method to save reservation with all previous data and user inputted name/citizenship
+    private async void SaveReservation()
+    {
+        //If input name or citizenship is empty it will throw an error and ask for re-entry
+        if (string.IsNullOrEmpty(inputName) || string.IsNullOrEmpty(inputCitizenship))
+        {
+            saveButton = "Error: Name and Citizenship are required";
+            StateHasChanged();
+            await Task.Delay(2000);
+            saveButton = "Try again";
+            return;
+        }
+
+        //If no seats available it will show an error.
+        if (selectedFlight.Seats <= 0)
+        {
+            saveButton = "Error: No seats remaining on flight.";
+            StateHasChanged();
+            await Task.Delay(2000);
+            saveButton = "Save";
+            return;
+        }
+
+        //Creates Reservation with setters
+        Reservation reservation = new Reservation
+        {
+            ReservationCode = ReservationCode,
+            FlightId = selectedFlight.FlightId,
+            Airline = selectedFlight.Airline,
+            Cost = selectedFlight.CostPerSeat,
+            Name = inputName,
+            Citizenship = inputCitizenship,
+            SelectedFlight = selectedFlight,
+            IsActive = ReservationStatus == "Active"
+        };
+
+        /* Adds a check to see if the current reservation code being saved is already in the 
+         * list of reservations and it is, it will just be updated instead of being duplicated.
+         * If the reservation code isn't in the list, the entire reservation will be added */
+        bool updated = false;
+
+        for (int x = 0; x < App.AllReservations.Count; x++)
+        {
+            if (App.AllReservations[x].ReservationCode == reservation.ReservationCode)
+            {
+                App.AllReservations[x] = reservation;
+                updated = true;
+                break;
+            }
+        }
+
+        if (!updated)
+        {
+            App.AllReservations.Add(reservation);
+        }
+
+        saveButton = "Reservation Saved";
+        //Gets current directory and chooses that path for binary reservations file
+        string appPath = System.IO.Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location);
+        string resourcePath = System.IO.Path.Combine(appPath, "..", "..", "..", "..", ".." ,"Resources", "Files", "reservations.bin");
+        
+        //Saves binary file at path
+        Reservation.Persist(resourcePath);
+
+        StateHasChanged();
+        await Task.Delay(1000);
+
+        //Refreshes input fields
+        inputName = string.Empty;
+        inputCitizenship = string.Empty;
+        ReservationCode = string.Empty;
+        selectedFlight = null;
+
+        //Changes newReservation title back to View/Edit and changes save button
+        App.IsNewReservation = false;
+        saveButton = "Save";
+        StateHasChanged();
+
+    }
+
+}
